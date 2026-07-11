@@ -4,9 +4,9 @@ Going to discuss everything about the Pytorch its concept and its practical impl
 
 1.Tensors:
 
- It is multidimentional array that is designed for the mathematical and computation efficiency.
- First we are going to discuss about the topic Tensors.
- So tensors are basically vectors like
+ --> It is multidimentional array that is designed for the mathematical and computation efficiency.
+ --> First we are going to discuss about the topic Tensors.
+ --> So tensors are basically vectors like
     i.  Scaler or 0-D vectors like 1 or 2 any single number is example of Scaler.
     ii. 1-D tensor- Arrays is one of the best example of 1-D tensors. eg-[1,2,3,4,5], In NLP embedding is one of the best example of 1-D tensors.
     iii. 2-D tensor-It is in 2 direction array and best example is Grayscale image or eminist Dataset.
@@ -16,3 +16,7 @@ Going to discuss everything about the Pytorch its concept and its practical impl
 Uses:-i. Used in doing Mathematical Operations.
       ii. Used in storing real world data in like photo and videos.
       iii. Used in Deep learning for storing data and and perform calculations like WX+b.
+
+2. Autograd:
+   --> It is a tool which helps us to calculate the diffrentiation automaticaaly.
+   --> We know that in depp Neural Network we have to work very hard to calculate difrentiation because it is very large nested neural networks so cal        manully is not possible so use Autograd.
