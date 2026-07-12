@@ -423,6 +423,147 @@ Using these classes makes the training pipeline cleaner, faster, and easier to m
 - Together, they make data handling efficient and scalable.
 
 
+## Parallel Data Loading
+
+Loading data from disk can become a bottleneck during training, especially for large datasets. While the model is processing one batch, the CPU can prepare the next batch in parallel.
+
+PyTorch's `DataLoader` supports parallel data loading using the `num_workers` parameter.
+
+```python
+train_loader = DataLoader(
+    train_dataset,
+    batch_size=32,
+    shuffle=True,
+    num_workers=4
+)
+```
+
+Here,
+
+- **batch_size=32** → Each batch contains 32 samples.
+- **shuffle=True** → Shuffles the dataset at the beginning of every epoch.
+- **num_workers=4** → Four CPU worker processes load and prepare batches in parallel.
+
+---
+
+## Why use Multiple Workers?
+
+Suppose your model trains on the GPU.
+
+If there is only one worker (`num_workers=0`), the workflow looks like:
+
+```text
+Load Batch 1
+      │
+      ▼
+Train Batch 1
+      │
+      ▼
+Load Batch 2
+      │
+      ▼
+Train Batch 2
+      │
+      ▼
+Load Batch 3
+      │
+      ▼
+Train Batch 3
+```
+
+Here, the GPU often waits while the CPU loads data.
+
+---
+
+With multiple workers:
+
+```text
+Worker 1 ──► Batch 1
+Worker 2 ──► Batch 2
+Worker 3 ──► Batch 3
+Worker 4 ──► Batch 4
+                 │
+                 ▼
+            DataLoader
+                 │
+                 ▼
+          Training Loop
+```
+
+While the model is training on **Batch 1**, the workers are already preparing **Batch 2**, **Batch 3**, and **Batch 4**.
+
+This keeps the GPU busy and reduces idle time.
+
+---
+
+## Data Loading Pipeline
+
+```text
+Dataset
+   │
+   ▼
+Worker 1 ─┐
+Worker 2 ─┼──► DataLoader ───► Model
+Worker 3 ─┤
+Worker 4 ─┘
+```
+
+Each worker independently calls the `Dataset.__getitem__()` method to fetch samples and prepares batches concurrently.
+
+---
+
+## Choosing `num_workers`
+
+| num_workers | Description |
+|-------------|-------------|
+| 0 | No parallel loading (default) |
+| 2 | Two worker processes |
+| 4 | Four worker processes |
+| 8 | Eight worker processes |
+
+Generally,
+
+- Small datasets → `num_workers = 0 or 2`
+- Medium datasets → `num_workers = 4`
+- Large datasets → `num_workers = 8` (depending on CPU cores)
+
+There is no universal best value—it depends on your hardware and dataset.
+
+---
+
+## Complete DataLoader Flow
+
+```text
+Dataset
+   │
+   ▼
+Shuffle Indices
+   │
+   ▼
+Split into Mini-Batches
+   │
+   ▼
+Multiple Workers Load Data
+   │
+   ▼
+Collate Samples into Batch
+   │
+   ▼
+Return Batch to Training Loop
+   │
+   ▼
+Neural Network
+```
+
+---
+
+## Key Takeaways
+
+- **Dataset** defines how to access the data.
+- **DataLoader** creates mini-batches from the dataset.
+- **shuffle=True** randomizes the order of samples each epoch.
+- **batch_size** controls the number of samples per batch.
+- **num_workers** enables parallel data loading, reducing data loading time and improving GPU utilization.
 
 
 
