@@ -259,17 +259,168 @@ To reduce overfitting:
 
 ---
 
-# What's Next?
+# Dataset and DataLoader
 
-After understanding the above concepts, we'll move on to:
+`Dataset` and `DataLoader` are two of the most important abstractions in PyTorch. They separate **how data is stored** from **how data is fed to the model during training**.
 
-- Building Custom Datasets
-- DataLoader
-- Training Loop
-- Optimizers
-- Model Evaluation
-- Saving Models
+---
 
+## Dataset
+
+The `Dataset` class acts as a **blueprint** for your data. It tells PyTorch:
+
+- Where the data is stored.
+- How to load the data.
+- How to return a single sample when requested.
+
+To create a custom dataset, you inherit from `torch.utils.data.Dataset` and implement three methods.
+
+### 1. `__init__()`
+
+This method loads or initializes the dataset.
+
+```python
+def __init__(self, features, labels):
+    self.features = features
+    self.labels = labels
+```
+
+---
+
+### 2. `__len__()`
+
+Returns the total number of samples in the dataset.
+
+```python
+def __len__(self):
+    return len(self.features)
+```
+
+---
+
+### 3. `__getitem__(index)`
+
+Returns a single sample (features and corresponding label) at the specified index.
+
+```python
+def __getitem__(self, index):
+    return self.features[index], self.labels[index]
+```
+
+---
+
+### Dataset Workflow
+
+```text
+CSV File
+      │
+      ▼
+Pandas DataFrame
+      │
+      ▼
+Custom Dataset
+      │
+      ├── __init__()
+      ├── __len__()
+      └── __getitem__()
+```
+
+---
+
+## DataLoader
+
+The `DataLoader` wraps a `Dataset` and provides an efficient way to iterate through the data during training.
+
+Instead of manually accessing samples one by one, the DataLoader automatically:
+
+- Creates mini-batches
+- Shuffles the data (optional)
+- Loads data efficiently
+- Supports parallel data loading using multiple workers
+
+Example:
+
+```python
+train_loader = DataLoader(
+    train_dataset,
+    batch_size=32,
+    shuffle=True
+)
+```
+
+---
+
+## DataLoader Control Flow
+
+At the beginning of every epoch:
+
+1. Shuffle the dataset indices (if `shuffle=True`).
+2. Divide the indices into batches.
+3. Request each sample from the `Dataset` using `__getitem__()`.
+4. Combine the samples into a batch using `collate_fn`.
+5. Return the batch to the training loop.
+
+---
+
+## Data Flow
+
+```text
+Dataset
+   │
+   ▼
+DataLoader
+   │
+   ├── Shuffle (Optional)
+   ├── Create Batches
+   ├── Load Samples
+   └── Combine into Batch
+   │
+   ▼
+Training Loop
+   │
+   ▼
+Neural Network
+```
+
+---
+
+## Example
+
+```python
+train_dataset = CustomDataset(X_train, y_train)
+
+train_loader = DataLoader(
+    train_dataset,
+    batch_size=32,
+    shuffle=True
+)
+
+for features, labels in train_loader:
+    outputs = model(features)
+```
+
+---
+
+## Why do we use Dataset and DataLoader?
+
+Without `Dataset` and `DataLoader`, you would have to:
+
+- Read the data manually.
+- Select samples one by one.
+- Create batches yourself.
+- Shuffle the data manually.
+
+Using these classes makes the training pipeline cleaner, faster, and easier to maintain.
+
+---
+
+## Key Takeaways
+
+- **Dataset** defines **how data is loaded**.
+- **DataLoader** defines **how data is fed to the model**.
+- `Dataset` returns **one sample at a time**.
+- `DataLoader` returns **one batch at a time**.
+- Together, they make data handling efficient and scalable.
 
 
 
