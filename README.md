@@ -815,40 +815,929 @@ DataLoader
 
 ---
 
-# Key Points
+# collate_fn in PyTorch
 
-- Dataset stores the data.
-- Sampler decides **which sample to pick next**.
-- DataLoader groups samples into mini-batches.
-- `shuffle=True` internally uses a **RandomSampler**.
-- `shuffle=False` internally uses a **SequentialSampler**.
+## What is `collate_fn`?
 
-Dataset and DataLoader
-│
-├── Dataset
-│     ├── __init__()
-│     ├── __len__()
-│     └── __getitem__()
-│
-├── Samplers
-│     ├── SequentialSampler
-│     ├── RandomSampler
-│     ├── SubsetRandomSampler
-│     └── WeightedRandomSampler
-│
-├── BatchSampler
-│
-├── Parallel Data Loading (num_workers)
-│
-├── collate_fn
-│
-├── pin_memory
-│
-└── persistent_workers
+The `collate_fn` is a function used by the **DataLoader** to combine multiple samples from a `Dataset` into a **single mini-batch**.
 
+When the DataLoader retrieves samples using `Dataset.__getitem__()`, it collects them into a list. The `collate_fn` then decides **how those samples should be combined** into tensors before they are returned to the training loop.
 
+By default, PyTorch uses a built-in `collate_fn` that works well when all samples have the **same shape**.
 
+---
 
+## Default Workflow
+
+Suppose your Dataset returns one sample at a time.
+
+```python
+dataset[0]
+```
+
+returns
+
+```python
+(tensor([1,2,3]), 0)
+```
+
+and
+
+```python
+dataset[1]
+```
+
+returns
+
+```python
+(tensor([4,5,6]), 1)
+```
+
+The DataLoader collects these samples into a list:
+
+```python
+[
+    (tensor([1,2,3]), 0),
+    (tensor([4,5,6]), 1)
+]
+```
+
+The default `collate_fn` converts this into
+
+```python
+(
+    tensor([[1,2,3],
+            [4,5,6]]),
+
+    tensor([0,1])
+)
+```
+
+This batch is then passed to the training loop.
+
+---
+
+## Data Flow
+
+```text
+Dataset
+   │
+   ▼
+Sample 1
+Sample 2
+Sample 3
+Sample 4
+   │
+   ▼
+List of Samples
+   │
+   ▼
+collate_fn
+   │
+   ▼
+Mini Batch
+   │
+   ▼
+Training Loop
+```
+
+---
+
+# Why do we need a custom `collate_fn`?
+
+The default `collate_fn` assumes that every sample has the same shape.
+
+This works perfectly for datasets like:
+
+- MNIST
+- FashionMNIST
+- CIFAR-10
+
+because every image has the same dimensions.
+
+However, some datasets contain variable-sized data.
+
+Examples:
+
+- Sentences with different lengths
+- Images with different sizes
+- Object detection datasets
+- Speech signals
+
+In these cases, the default `collate_fn` cannot combine the samples into a batch.
+
+---
+
+## Example (NLP)
+
+Suppose your dataset contains tokenized sentences.
+
+| Sentence | Token IDs | Label |
+|----------|-----------|-------|
+| I love coding | [1,2,3] | 0 |
+| Deep learning rocks | [4,5,6] | 1 |
+| Transformers are fun | [7,8,9,10] | 1 |
+| Hello world | [11,12] | 0 |
+
+Notice that every sentence has a different length.
+
+If we try to batch them directly,
+
+```python
+[
+    [1,2,3],
+    [4,5,6],
+    [7,8,9,10],
+    [11,12]
+]
+```
+
+PyTorch raises an error because tensors in a batch must have the same dimensions.
+
+---
+
+## Solution: Padding using a custom `collate_fn`
+
+A custom `collate_fn` can pad all sequences to the same length.
+
+Original sequences
+
+```text
+[1,2,3]
+[4,5,6]
+[7,8,9,10]
+[11,12]
+```
+
+After padding
+
+```text
+[1,2,3,0]
+[4,5,6,0]
+[7,8,9,10]
+[11,12,0,0]
+```
+
+Now every sequence has the same length and can be combined into a batch.
+
+---
+
+## Example
+
+```python
+from torch.nn.utils.rnn import pad_sequence
+
+def custom_collate(batch):
+
+    features, labels = zip(*batch)
+
+    features = pad_sequence(
+        features,
+        batch_first=True,
+        padding_value=0
+    )
+
+    labels = torch.tensor(labels)
+
+    return features, labels
+```
+
+Use it inside the DataLoader:
+
+```python
+train_loader = DataLoader(
+    dataset,
+    batch_size=32,
+    shuffle=True,
+    collate_fn=custom_collate
+)
+```
+
+---
+
+## Complete DataLoader Pipeline
+
+```text
+Dataset
+   │
+   ▼
+Sampler
+   │
+   ▼
+Workers (Optional)
+   │
+   ▼
+__getitem__()
+   │
+   ▼
+List of Samples
+   │
+   ▼
+collate_fn
+   │
+   ▼
+Mini Batch
+   │
+   ▼
+Training Loop
+```
+
+---
+
+## When should you write your own `collate_fn`?
+
+Create a custom `collate_fn` when:
+
+- Samples have different lengths.
+- Images have different sizes.
+- You need to pad sequences.
+- You need custom preprocessing during batching.
+- A batch contains multiple data types.
+
+---
+
+## Key Takeaways
+
+- **Dataset** returns **one sample** at a time.
+- **DataLoader** collects multiple samples into a list.
+- **collate_fn** combines those samples into a mini-batch.
+- The default `collate_fn` works when all samples have the same shape.
+- A custom `collate_fn` is required for variable-sized data such as NLP, speech, or object detection datasets.
+
+# Important Parameters of DataLoader
+
+The `DataLoader` class provides several parameters that allow you to control how data is loaded, shuffled, batched, and transferred to the model.
+
+General Syntax:
+
+```python
+train_loader = DataLoader(
+    dataset=train_dataset,
+    batch_size=32,
+    shuffle=True,
+    num_workers=4,
+    pin_memory=True,
+    drop_last=False,
+    collate_fn=None
+)
+```
+
+---
+
+## 1. dataset (Required)
+
+The dataset from which the DataLoader fetches samples.
+
+It must be a subclass of `torch.utils.data.Dataset` and implement:
+
+- `__init__()`
+- `__len__()`
+- `__getitem__()`
+
+Example
+
+```python
+train_loader = DataLoader(
+    dataset=train_dataset
+)
+```
+
+---
+
+## 2. batch_size
+
+Determines how many samples are loaded in a single batch.
+
+Example
+
+```python
+batch_size = 32
+```
+
+Suppose the dataset contains **100 samples**.
+
+```text
+Batch 1 : 0 - 31
+
+Batch 2 : 32 - 63
+
+Batch 3 : 64 - 95
+
+Batch 4 : 96 - 99
+```
+
+Larger batch sizes generally:
+
+- Improve GPU utilization.
+- Require more GPU memory.
+
+Default value
+
+```python
+batch_size = 1
+```
+
+---
+
+## 3. shuffle
+
+Determines whether the dataset should be shuffled before every epoch.
+
+```python
+shuffle=True
+```
+
+Without shuffle
+
+```text
+Epoch 1
+
+0 1 2 3 4 5 6 7 ...
+```
+
+With shuffle
+
+```text
+Epoch 1
+
+5 8 2 0 7 1 6 3 ...
+
+Epoch 2
+
+1 9 4 8 0 6 2 7 ...
+```
+
+Shuffling helps prevent the model from learning patterns based on the order of the data.
+
+---
+
+## 4. num_workers
+
+Specifies the number of worker processes used for loading data.
+
+```python
+num_workers=4
+```
+
+Without workers
+
+```text
+Load Batch 1
+      │
+Train Batch 1
+      │
+Load Batch 2
+      │
+Train Batch 2
+```
+
+With multiple workers
+
+```text
+Worker 1 ──► Batch 1
+
+Worker 2 ──► Batch 2
+
+Worker 3 ──► Batch 3
+
+Worker 4 ──► Batch 4
+
+            │
+            ▼
+
+        DataLoader
+
+            │
+            ▼
+
+        Training Loop
+```
+
+While the GPU is training on one batch, the CPU workers prepare future batches.
+
+Typical values
+
+| Dataset Size | Suggested num_workers |
+|--------------|----------------------:|
+| Small | 0–2 |
+| Medium | 2–4 |
+| Large | 4–8 |
+
+---
+
+## 5. pin_memory
+
+Copies tensors into **pinned (page-locked) memory** before transferring them to the GPU.
+
+```python
+pin_memory=True
+```
+
+This allows faster CPU → GPU data transfer.
+
+Workflow
+
+```text
+Dataset
+
+↓
+
+Pinned Memory (CPU)
+
+↓
+
+GPU Memory
+
+↓
+
+Training
+```
+
+Use `pin_memory=True` only when training on a CUDA-enabled GPU.
+
+If you're training only on CPU, it usually provides little or no benefit.
+
+---
+
+## 6. drop_last
+
+Determines what happens when the dataset size is **not divisible** by the batch size.
+
+Suppose
+
+```text
+Dataset Size = 100
+
+Batch Size = 32
+```
+
+Then
+
+Without `drop_last`
+
+```text
+Batch 1 → 32
+
+Batch 2 → 32
+
+Batch 3 → 32
+
+Batch 4 → 4
+```
+
+With
+
+```python
+drop_last=True
+```
+
+The last incomplete batch is discarded.
+
+```text
+Batch 1 → 32
+
+Batch 2 → 32
+
+Batch 3 → 32
+```
+
+This is useful when every batch must have exactly the same size.
+
+---
+
+## 7. collate_fn
+
+Specifies how multiple samples should be combined into a mini-batch.
+
+The default `collate_fn` simply stacks tensors together.
+
+For variable-length data such as NLP sequences or object detection datasets, a custom `collate_fn` is often required.
+
+Example
+
+```python
+train_loader = DataLoader(
+    dataset,
+    batch_size=32,
+    collate_fn=my_collate_fn
+)
+```
+
+---
+
+## 8. sampler
+
+A sampler determines **which sample indices** are selected from the dataset.
+
+Instead of using
+
+```python
+shuffle=True
+```
+
+you can provide your own sampler.
+
+Example
+
+```python
+from torch.utils.data import RandomSampler
+
+sampler = RandomSampler(dataset)
+
+loader = DataLoader(
+    dataset,
+    sampler=sampler
+)
+```
+
+Common samplers
+
+- SequentialSampler
+- RandomSampler
+- SubsetRandomSampler
+- WeightedRandomSampler
+
+---
+
+## DataLoader Execution Pipeline
+
+```text
+Dataset
+   │
+   ▼
+Sampler
+   │
+   ▼
+Shuffle (Optional)
+   │
+   ▼
+Worker Processes
+(num_workers)
+   │
+   ▼
+Dataset.__getitem__()
+   │
+   ▼
+collate_fn
+   │
+   ▼
+Mini Batch
+   │
+   ▼
+Pinned Memory (Optional)
+   │
+   ▼
+GPU
+   │
+   ▼
+Training Loop
+```
+
+---
+
+# Important Parameters of DataLoader
+
+The `DataLoader` class provides several parameters that allow you to control how data is loaded, shuffled, batched, and transferred to the model.
+
+General Syntax:
+
+```python
+train_loader = DataLoader(
+    dataset=train_dataset,
+    batch_size=32,
+    shuffle=True,
+    num_workers=4,
+    pin_memory=True,
+    drop_last=False,
+    collate_fn=None
+)
+```
+
+---
+
+## 1. dataset (Required)
+
+The dataset from which the DataLoader fetches samples.
+
+It must be a subclass of `torch.utils.data.Dataset` and implement:
+
+- `__init__()`
+- `__len__()`
+- `__getitem__()`
+
+Example
+
+```python
+train_loader = DataLoader(
+    dataset=train_dataset
+)
+```
+
+---
+
+## 2. batch_size
+
+Determines how many samples are loaded in a single batch.
+
+Example
+
+```python
+batch_size = 32
+```
+
+Suppose the dataset contains **100 samples**.
+
+```text
+Batch 1 : 0 - 31
+
+Batch 2 : 32 - 63
+
+Batch 3 : 64 - 95
+
+Batch 4 : 96 - 99
+```
+
+Larger batch sizes generally:
+
+- Improve GPU utilization.
+- Require more GPU memory.
+
+Default value
+
+```python
+batch_size = 1
+```
+
+---
+
+## 3. shuffle
+
+Determines whether the dataset should be shuffled before every epoch.
+
+```python
+shuffle=True
+```
+
+Without shuffle
+
+```text
+Epoch 1
+
+0 1 2 3 4 5 6 7 ...
+```
+
+With shuffle
+
+```text
+Epoch 1
+
+5 8 2 0 7 1 6 3 ...
+
+Epoch 2
+
+1 9 4 8 0 6 2 7 ...
+```
+
+Shuffling helps prevent the model from learning patterns based on the order of the data.
+
+---
+
+## 4. num_workers
+
+Specifies the number of worker processes used for loading data.
+
+```python
+num_workers=4
+```
+
+Without workers
+
+```text
+Load Batch 1
+      │
+Train Batch 1
+      │
+Load Batch 2
+      │
+Train Batch 2
+```
+
+With multiple workers
+
+```text
+Worker 1 ──► Batch 1
+
+Worker 2 ──► Batch 2
+
+Worker 3 ──► Batch 3
+
+Worker 4 ──► Batch 4
+
+            │
+            ▼
+
+        DataLoader
+
+            │
+            ▼
+
+        Training Loop
+```
+
+While the GPU is training on one batch, the CPU workers prepare future batches.
+
+Typical values
+
+| Dataset Size | Suggested num_workers |
+|--------------|----------------------:|
+| Small | 0–2 |
+| Medium | 2–4 |
+| Large | 4–8 |
+
+---
+
+## 5. pin_memory
+
+Copies tensors into **pinned (page-locked) memory** before transferring them to the GPU.
+
+```python
+pin_memory=True
+```
+
+This allows faster CPU → GPU data transfer.
+
+Workflow
+
+```text
+Dataset
+
+↓
+
+Pinned Memory (CPU)
+
+↓
+
+GPU Memory
+
+↓
+
+Training
+```
+
+Use `pin_memory=True` only when training on a CUDA-enabled GPU.
+
+If you're training only on CPU, it usually provides little or no benefit.
+
+---
+
+## 6. drop_last
+
+Determines what happens when the dataset size is **not divisible** by the batch size.
+
+Suppose
+
+```text
+Dataset Size = 100
+
+Batch Size = 32
+```
+
+Then
+
+Without `drop_last`
+
+```text
+Batch 1 → 32
+
+Batch 2 → 32
+
+Batch 3 → 32
+
+Batch 4 → 4
+```
+
+With
+
+```python
+drop_last=True
+```
+
+The last incomplete batch is discarded.
+
+```text
+Batch 1 → 32
+
+Batch 2 → 32
+
+Batch 3 → 32
+```
+
+This is useful when every batch must have exactly the same size.
+
+---
+
+## 7. collate_fn
+
+Specifies how multiple samples should be combined into a mini-batch.
+
+The default `collate_fn` simply stacks tensors together.
+
+For variable-length data such as NLP sequences or object detection datasets, a custom `collate_fn` is often required.
+
+Example
+
+```python
+train_loader = DataLoader(
+    dataset,
+    batch_size=32,
+    collate_fn=my_collate_fn
+)
+```
+
+---
+
+## 8. sampler
+
+A sampler determines **which sample indices** are selected from the dataset.
+
+Instead of using
+
+```python
+shuffle=True
+```
+
+you can provide your own sampler.
+
+Example
+
+```python
+from torch.utils.data import RandomSampler
+
+sampler = RandomSampler(dataset)
+
+loader = DataLoader(
+    dataset,
+    sampler=sampler
+)
+```
+
+Common samplers
+
+- SequentialSampler
+- RandomSampler
+- SubsetRandomSampler
+- WeightedRandomSampler
+
+---
+
+## DataLoader Execution Pipeline
+
+```text
+Dataset
+   │
+   ▼
+Sampler
+   │
+   ▼
+Shuffle (Optional)
+   │
+   ▼
+Worker Processes
+(num_workers)
+   │
+   ▼
+Dataset.__getitem__()
+   │
+   ▼
+collate_fn
+   │
+   ▼
+Mini Batch
+   │
+   ▼
+Pinned Memory (Optional)
+   │
+   ▼
+GPU
+   │
+   ▼
+Training Loop
+```
+
+---
+
+# Summary
+
+| Parameter | Purpose |
+|-----------|---------|
+| dataset | Source of the data |
+| batch_size | Number of samples per batch |
+| shuffle | Randomize sample order every epoch |
+| num_workers | Number of CPU workers for parallel loading |
+| pin_memory | Faster CPU → GPU transfer |
+| drop_last | Drop the final incomplete batch |
+| collate_fn | Defines how samples are merged into a batch |
+| sampler | Controls the order of sample selection |
 
 
 
