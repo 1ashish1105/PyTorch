@@ -566,9 +566,285 @@ Neural Network
 - **num_workers** enables parallel data loading, reducing data loading time and improving GPU utilization.
 
 
+# Samplers in PyTorch
 
+## What is a Sampler?
 
+A **Sampler** determines the order in which samples are selected from a dataset.
 
+Instead of fetching the data itself, a sampler simply decides **which indices should be returned** to the `DataLoader`.
+
+The DataLoader then uses those indices to retrieve the actual samples from the Dataset using the `__getitem__()` method.
+
+---
+
+## How DataLoader Uses a Sampler
+
+Suppose our dataset contains **10 samples**.
+
+```text
+Dataset
+
+Index:
+[0] [1] [2] [3] [4] [5] [6] [7] [8] [9]
+```
+
+The sampler decides the order in which these indices are accessed.
+
+For example,
+
+```text
+Random Sampler
+
+[4] [6] [1] [3] [7] [8] [2] [0] [9] [5]
+```
+
+The DataLoader will now call
+
+```python
+dataset[4]
+dataset[6]
+dataset[1]
+dataset[3]
+...
+```
+
+instead of
+
+```python
+dataset[0]
+dataset[1]
+dataset[2]
+...
+```
+
+---
+
+# Types of Samplers
+
+PyTorch provides several built-in samplers.
+
+---
+
+## 1. SequentialSampler
+
+Returns the samples in sequential order.
+
+```text
+0 → 1 → 2 → 3 → 4 → ...
+```
+
+Example:
+
+```python
+from torch.utils.data import DataLoader
+
+loader = DataLoader(
+    dataset,
+    batch_size=4,
+    shuffle=False
+)
+```
+
+Output indices
+
+```text
+Batch 1 : 0 1 2 3
+
+Batch 2 : 4 5 6 7
+
+Batch 3 : 8 9
+```
+
+This is the default sampler when
+
+```python
+shuffle=False
+```
+
+---
+
+## 2. RandomSampler
+
+Returns the samples in random order.
+
+Example:
+
+```python
+loader = DataLoader(
+    dataset,
+    batch_size=4,
+    shuffle=True
+)
+```
+
+Possible output
+
+```text
+Batch 1 : 7 3 1 5
+
+Batch 2 : 0 6 9 2
+
+Batch 3 : 8 4
+```
+
+Every epoch the order changes.
+
+This is the default sampler when
+
+```python
+shuffle=True
+```
+
+---
+
+## 3. SubsetRandomSampler
+
+Used when you want to train on only a subset of the dataset.
+
+Example
+
+```python
+from torch.utils.data import DataLoader
+from torch.utils.data import SubsetRandomSampler
+
+indices = [0, 5, 8, 11, 20]
+
+sampler = SubsetRandomSampler(indices)
+
+loader = DataLoader(
+    dataset,
+    batch_size=2,
+    sampler=sampler
+)
+```
+
+Only the specified indices will be sampled.
+
+---
+
+## 4. WeightedRandomSampler
+
+Useful for **imbalanced datasets**.
+
+Suppose your dataset is
+
+```text
+Cats : 900
+
+Dogs : 100
+```
+
+The model may become biased toward cats.
+
+WeightedRandomSampler assigns a higher sampling probability to the minority class.
+
+Example
+
+```python
+from torch.utils.data import WeightedRandomSampler
+
+weights = [0.1, 0.9, ...]
+
+sampler = WeightedRandomSampler(
+    weights,
+    num_samples=len(weights),
+    replacement=True
+)
+```
+
+This helps create more balanced batches.
+
+---
+
+# DataLoader Pipeline
+
+```text
+Dataset
+   │
+   ▼
+Sampler
+   │
+   ▼
+Indices
+
+0 5 3 7 2 1 ...
+
+   │
+   ▼
+Dataset.__getitem__()
+
+   │
+   ▼
+DataLoader
+
+   │
+   ▼
+Mini Batch
+
+   │
+   ▼
+Training Loop
+```
+
+---
+
+# Relationship Between Dataset, Sampler and DataLoader
+
+```text
+Dataset
+│
+├── __len__()
+│
+└── __getitem__()
+
+        ▲
+        │
+Sampler chooses indices
+
+        │
+        ▼
+
+DataLoader
+│
+├── Creates batches
+├── Shuffles data (optional)
+├── Uses multiple workers
+└── Returns batches to the model
+```
+
+---
+
+# Key Points
+
+- Dataset stores the data.
+- Sampler decides **which sample to pick next**.
+- DataLoader groups samples into mini-batches.
+- `shuffle=True` internally uses a **RandomSampler**.
+- `shuffle=False` internally uses a **SequentialSampler**.
+
+Dataset and DataLoader
+│
+├── Dataset
+│     ├── __init__()
+│     ├── __len__()
+│     └── __getitem__()
+│
+├── Samplers
+│     ├── SequentialSampler
+│     ├── RandomSampler
+│     ├── SubsetRandomSampler
+│     └── WeightedRandomSampler
+│
+├── BatchSampler
+│
+├── Parallel Data Loading (num_workers)
+│
+├── collate_fn
+│
+├── pin_memory
+│
+└── persistent_workers
 
 
 
